@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Medication Lot Tracking</title>
+<style>
+body{font-family:Arial;margin:0;background:#f4f7fb;color:#172033}header{background:#17365d;color:white;padding:22px 30px}
+main{max-width:1200px;margin:25px auto;padding:0 20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.card{background:white;padding:20px;border-radius:12px;box-shadow:0 2px 10px #0001}.wide{grid-column:1/-1}
+input,button{padding:10px;margin:5px;border-radius:7px;border:1px solid #ccd3dd}button{background:#17365d;color:white;cursor:pointer}
+pre{white-space:pre-wrap;background:#101827;color:#dce7f7;padding:15px;border-radius:8px;max-height:360px;overflow:auto}
+table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid #ddd;text-align:left}
+.badge{padding:4px 8px;border-radius:10px;background:#e7eef8}.danger{background:#ffe1e1}
+</style></head>
+<body>
+<header><h1>Medication Lot Tracking System</h1><div>FEFO • Cold Chain • Lot Genealogy • Recall Impact</div></header>
+<main>
+<div class="grid">
+<section class="card"><h2>FEFO Search</h2>
+<input id="med" value="Paracetamol 500mg"><input id="qty" type="number" value="20"><button onclick="fefo()">Find FEFO Lots</button><pre id="fefoOut"></pre></section>
+<section class="card"><h2>Dispense</h2>
+<input id="dmed" value="Paracetamol 500mg"><input id="mrn" value="MRN1004"><input id="dqty" type="number" value="10"><button onclick="dispense()">Dispense by FEFO</button><pre id="dispOut"></pre></section>
+<section class="card"><h2>Cold-Chain Flag</h2>
+<input id="coldLot" value="LOT-INS-001"><button onclick="cold()">Flag Excursion</button><pre id="coldOut"></pre></section>
+<section class="card"><h2>Repackage</h2>
+<input id="parent" value="LOT-INS-001"><input id="child" value="LOT-INS-001-CHILD-001"><input id="rqty" type="number" value="20"><button onclick="repack()">Create Child Lot</button><pre id="repOut"></pre></section>
+<section class="card"><h2>Recall Impact</h2>
+<input id="recall" value="LOT-PARA-001"><button onclick="recall()">Calculate Impact</button><pre id="recallOut"></pre></section>
+<section class="card wide"><h2>Current Lots</h2><button onclick="loadLots()">Refresh</button><div id="lots"></div></section>
+</div></main>
+<script>
+const j=async(u,o)=>{let r=await fetch(u,o);let x=await r.json();if(!r.ok)throw Error(x.error||JSON.stringify(x));return x};
+const show=(id,x)=>{const e=document.getElementById(id);if(x.error){e.innerHTML=`<b>Error:</b> ${x.error}`;}else if(id==='dispOut'&&x.picks){e.innerHTML=`<b>Dispensed Successfully</b><br>Medication: ${x.medication}<br>Patient: ${x.patient}<br>Quantity: ${x.requested}<br>Lot: ${x.picks[0].lotNumber}<br>Expiry: ${x.picks[0].expiryDate}<br>Strategy: ${x.strategy}`;}else if(id==='coldOut'&&x.status){e.innerHTML=`<b>Status:</b> ${x.status}<br><b>Lot:</b> ${x.lot}<br><b>Flagged:</b> ${x.flagged}<br><b>Message:</b> ${x.message}`;}else if(id==='repOut'){e.innerHTML=`<b>Repackage Successful</b><br>Parent Lot: ${x.parentLot||x.parentLotNumber||'N/A'}<br>Child Lot: ${x.childLot||x.childLotNumber||'N/A'}<br>Quantity: ${x.quantity||'N/A'}`;}else if(id==='recallOut'){e.innerHTML=`<b>Recall Impact</b><br>Root Lot: ${x.rootLot||'N/A'}<br>Impacted Lots: ${x.impactedLots?.length||0}<br>Patients: ${x.patientCount||0}<br>Locations: ${x.locationCount||0}<br>Actions: ${x.actions?.length||0}`;}else if(Array.isArray(x)){e.innerHTML=x.map(lot=>`<div><b>Lot:</b> ${lot.lotNumber}<br><b>Medication:</b> ${lot.medicationName}<br><b>Manufacturer:</b> ${lot.manufacturer}<br><b>Location:</b> ${lot.location}<br><b>Available Quantity:</b> ${lot.quantity}<br><b>Expiry:</b> ${lot.expiryDate}</div><hr>`).join('');}else{e.textContent=JSON.stringify(x,null,2);}};
+async function fefo(){try{show('fefoOut',await j('/api/fefo?medication='+encodeURIComponent(med.value)+'&quantity='+qty.value))}catch(e){show('fefoOut',{error:e.message})}}
+async function dispense(){try{show('dispOut',await j('/api/dispense',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({medication:dmed.value,mrn:mrn.value,quantity:+dqty.value})}));loadLots()}catch(e){show('dispOut',{error:e.message})}}
+async function cold(){try{show('coldOut',await j('/api/lots/'+encodeURIComponent(coldLot.value)+'/cold-chain',{method:'POST'}));loadLots()}catch(e){show('coldOut',{error:e.message})}}
+async function repack(){try{show('repOut',await j('/api/lots/repackage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({parentLot:parent.value,childLotNumber:child.value,quantity:+rqty.value})}));loadLots()}catch(e){show('repOut',{error:e.message})}}
+async function recall(){try{show('recallOut',await j('/api/recall/impact?lot='+encodeURIComponent(recall.value),{method:'POST'}))}catch(e){show('recallOut',{error:e.message})}}
+async function loadLots(){try{let x=await j('/api/lots');document.getElementById('lots').innerHTML='<table><tr><th>Lot</th><th>Medication</th><th>Available</th><th>Expiry</th><th>Location</th><th>Status</th></tr>'+x.map(l=>`<tr><td>${l.lotNumber}</td><td>${l.medicationName}</td><td>${l.availableQuantity}</td><td>${l.expiryDate}</td><td>${l.location}</td><td>${l.status}${l.coldChainExcursion?' ⚠️':''}</td></tr>`).join('')+'</table>'}catch(e){document.getElementById('lots').textContent=e.message}}
+loadLots();
+</script></body></html>
